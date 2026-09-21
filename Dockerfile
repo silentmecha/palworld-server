@@ -1,11 +1,16 @@
 FROM silentmecha/palworld-server:latest
 
+ARG STEAM_LOGIN=anonymous
+
 ENV AUTO_UPDATE=False
 
-RUN bash steamcmd \
-	+@ShutdownOnFailedCommand 1 \
-        +force_install_dir "${STEAMAPPDIR}" \
-        +login anonymous \
+RUN steamcmd \
+        +login "${STEAM_LOGIN}"
         +app_info_update 1 \
-        +app_update "${STEAMAPP_ID}" \
+        +quit
+
+RUN steamcmd \
+        +force_install_dir "${STEAMAPPDIR}" \
+        +login "${STEAM_LOGIN}"
+        +app_update "${STEAMAPP_ID}" validate \
         +quit
