@@ -3,7 +3,9 @@ FROM silentmecha/palworld-server:latest
 ENV AUTO_UPDATE=False
 
 RUN bash steamcmd \
-	+force_install_dir "${STEAMAPPDIR}" \
-	+login anonymous \
-	+app_update "${STEAMAPP_ID}" validate \
-	+quit
+	+@ShutdownOnFailedCommand 1 \
+        +force_install_dir "${STEAMAPPDIR}" \
+        +login anonymous \
+        +app_info_update 1 \
+        +app_update "${STEAMAPP_ID}" \
+        +quit
