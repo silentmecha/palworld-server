@@ -1,0 +1,30 @@
+
+services:
+  server:
+#    command: bash
+    build:
+      context: .
+    image: silentmecha/palworld-server:latest
+    restart: unless-stopped
+    stop_grace_period: 30s
+    ports:
+      - ${PORT}:${PORT}/udp
+#      - ${RESTAPI_PORT}:${RESTAPI_PORT}/tcp
+#      - ${RCON_PORT}:${RCON_PORT}/tcp
+    env_file: .env
+    stdin_open: true
+    tty: true
+    volumes:
+      - saved:/home/steam/save-data
+
+  sftp:
+    image: atmoz/sftp
+    restart: unless-stopped
+    volumes:
+      - saved:/home/${SFT_USER}/save
+    ports:
+      - "${SFT_PORT}:22"
+    command: ${SFT_USER}:${SFT_PASS}:1001:1001:save
+
+volumes:
+  saved:
