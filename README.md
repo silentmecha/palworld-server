@@ -6,7 +6,7 @@
 
 This repository contains the files needed to build and run a Docker image for a Palworld dedicated server. This image is built on the `silentmecha/steamcmd` base image and uses the official Palworld dedicated server available through SteamCMD.
 
-> **Warning:** The latest version on Docker Hub may be out of date. Please check the GitHub repository for the most recent updates.
+> **Warning:** The latest version on Docker Hub may be out of date. Please check the GitHub repository for the most recent updates. This is still being investigated to get workflows to make it work.
 
 ## Usage
 
