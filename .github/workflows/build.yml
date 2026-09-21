@@ -1,0 +1,154 @@
+name: Build Image
+
+on:
+  workflow_dispatch:
+
+  schedule:
+    - cron: "0 */6 * * *"
+
+  push:
+    branches:
+      - master
+
+permissions:
+  contents: read
+
+env:
+  IMAGE: ${{ github.repository }}
+  STEAM_ANONYMOUS: "true"
+
+concurrency:
+  group: docker-build
+  cancel-in-progress: false
+
+jobs:
+  config:
+    name: Check Configuration
+    runs-on: ubuntu-latest
+
+    outputs:
+      steam_anonymous: ${{ steps.config.outputs.steam_anonymous }}
+
+    steps:
+      - name: Validate configuration
+        id: config
+        run: |
+          set -euo pipefail
+
+          if [[ "${STEAM_ANONYMOUS}" != "true" && "${STEAM_ANONYMOUS}" != "false" ]]; then
+            echo "ERROR: STEAM_ANONYMOUS must be true or false."
+            exit 1
+          fi
+
+          echo "Steam anonymous installation: ${STEAM_ANONYMOUS}"
+          echo "steam_anonymous=${STEAM_ANONYMOUS}" >> "${GITHUB_OUTPUT}"
+
+  scheduled-check:
+    name: Check for Steam Update
+    needs: config
+    if: github.event_name == 'schedule' && needs.config.outputs.steam_anonymous == 'true'
+    runs-on: ubuntu-latest
+
+    outputs:
+      build: ${{ steps.check.outputs.build }}
+
+    steps:
+      - name: Check for Steam update
+        id: check
+        run: |
+          set -euo pipefail
+
+          if docker run --rm "${IMAGE}:latest" steam-update-check; then
+            echo "Steam server is up to date."
+            echo "build=false" >> "${GITHUB_OUTPUT}"
+          else
+            echo "Steam update required."
+            echo "build=true" >> "${GITHUB_OUTPUT}"
+          fi
+
+  build:
+    name: Build Image
+    needs:
+      - config
+      - scheduled-check
+
+    if: |
+      always() &&
+      needs.config.outputs.steam_anonymous == 'true' &&
+      (
+        github.event_name != 'schedule' ||
+        needs.scheduled-check.outputs.build == 'true'
+      )
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_ACCESS_TOKEN }}
+
+      - name: Build and push base image
+        if: github.event_name != 'schedule'
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./base.Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:base
+            ${{ env.IMAGE }}:latest
+
+      - name: Build game server image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Dockerfile
+          load: true
+          tags: |
+            ${{ env.IMAGE }}:build
+
+      - name: Get Steam Build ID
+        id: steam
+        run: |
+          set -euo pipefail
+
+          BUILD_ID="$(
+            docker run --rm \
+              "${IMAGE}:build" \
+              steam-buildid
+          )"
+
+          if [[ ! "${BUILD_ID}" =~ ^[0-9]+$ ]]; then
+            echo "ERROR: Invalid Steam Build ID: ${BUILD_ID}"
+            exit 1
+          fi
+
+          echo "Steam Build ID: ${BUILD_ID}"
+          echo "build_id=${BUILD_ID}" >> "${GITHUB_OUTPUT}"
+
+      - name: Tag game server image
+        run: |
+          set -euo pipefail
+
+          docker tag \
+            "${IMAGE}:build" \
+            "${IMAGE}:latest"
+
+          docker tag \
+            "${IMAGE}:build" \
+            "${IMAGE}:${{ steps.steam.outputs.build_id }}"
+
+      - name: Push game server images
+        run: |
+          set -euo pipefail
+
+          docker push "${IMAGE}:latest"
+          docker push "${IMAGE}:${{ steps.steam.outputs.build_id }}"
